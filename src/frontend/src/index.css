@@ -9,12 +9,12 @@
   :root {
     --radius: 0.75rem;
 
-    /* Primary blue (#1F6FE5) */
-    --primary: 0.52 0.19 261;
+    /* Primary blue #2563EB (oklch ~0.488 0.243 264.4) */
+    --primary: 0.488 0.243 264.4;
     --primary-foreground: 1 0 0;
 
-    /* Backgrounds */
-    --background: 0.97 0.01 261;
+    /* Background updated to #F9FAFB (oklch ~0.98 0.005 261) */
+    --background: 0.98 0.005 261;
     --foreground: 0.145 0.02 261;
 
     --card: 1 0 0;
@@ -37,7 +37,7 @@
 
     --border: 0.91 0.01 261;
     --input: 0.91 0.01 261;
-    --ring: 0.52 0.19 261;
+    --ring: 0.488 0.243 264.4;
 
     --chart-1: 0.646 0.222 41.116;
     --chart-2: 0.6 0.118 184.704;
@@ -47,12 +47,12 @@
 
     --sidebar: 1 0 0;
     --sidebar-foreground: 0.145 0.02 261;
-    --sidebar-primary: 0.52 0.19 261;
+    --sidebar-primary: 0.488 0.243 264.4;
     --sidebar-primary-foreground: 1 0 0;
     --sidebar-accent: 0.93 0.02 261;
     --sidebar-accent-foreground: 0.145 0.02 261;
     --sidebar-border: 0.91 0.01 261;
-    --sidebar-ring: 0.52 0.19 261;
+    --sidebar-ring: 0.488 0.243 264.4;
   }
 
   * {

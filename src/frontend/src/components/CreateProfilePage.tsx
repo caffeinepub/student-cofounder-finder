@@ -11,81 +11,203 @@ import {
 /**
  * CreateProfilePage.tsx
  * The form where students fill in their details to create a profile.
- * On submit, the data is saved to localStorage and the user is sent to Browse.
+ * On submit, the data is saved to localStorage.
+ * If the user is not logged in, they are auto-logged in after creation.
  */
 import { useState } from "react";
 import type { Page } from "../App";
 
 // The shape of a student profile
 export interface StudentProfile {
-  id: string; // Unique ID so we can tell profiles apart
+  id: string;
   name: string;
   age: string;
   role: string;
-  skills: string; // Comma-separated, e.g. "React, Python, Design"
+  branch?: string; // Optional: Branch / Domain field
+  skills: string;
   projectIdea: string;
-  contactInfo: string;
+  contactInfo?: string; // kept for backward compat (old profiles)
+  phone?: string; // new: phone number
+  email?: string; // new: email address
+  college?: string; // new: college / university
 }
 
 interface CreateProfilePageProps {
   onNavigate: (page: Page) => void;
+  // Called after successful creation -- sets currentUser and navigates to browse
+  onLogin: (contact: string) => void;
 }
+
+// Normalize contact: lowercase, remove spaces
+function cleanContact(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, "").trim();
+}
+
+// Branch / Domain options
+const BRANCH_OPTIONS = [
+  "Computer Science / IT",
+  "Mechanical Engineering",
+  "Civil Engineering",
+  "Electrical Engineering",
+  "Electronics & Communication",
+  "Chemical Engineering",
+  "Biotechnology",
+  "Pharmacy",
+  "Medical / Healthcare",
+  "Business / Commerce",
+  "Arts / Humanities",
+  "Science (Physics / Chemistry / Maths)",
+  "Other",
+];
 
 export default function CreateProfilePage({
   onNavigate,
+  onLogin,
 }: CreateProfilePageProps) {
-  // Form field values -- one state object for all fields
+  // If the user is already logged in, block profile creation
+  const currentUser = localStorage.getItem("currentUser");
+
   const [form, setForm] = useState({
     name: "",
     age: "",
     role: "",
+    branch: "",
     skills: "",
     projectIdea: "",
-    contactInfo: "",
+    college: "",
+    phone: "",
+    email: "",
   });
 
-  // Simple error message shown if the user leaves required fields empty
   const [error, setError] = useState("");
 
-  // Update a single field in the form state
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
-    setError(""); // Clear error when user starts typing
+    setError("");
   };
 
-  // Called when the user clicks "Submit"
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault(); // Prevent the page from refreshing
+    e.preventDefault();
 
-    // Basic validation -- make sure key fields are filled
     if (!form.name.trim() || !form.role || !form.skills.trim()) {
       setError("Please fill in your name, role, and skills.");
       return;
     }
 
-    // Build the new profile object
-    const newProfile: StudentProfile = {
-      id: Date.now().toString(), // Simple unique ID using timestamp
-      ...form,
-    };
+    // College is required
+    if (!form.college.trim()) {
+      setError("Please enter your college name.");
+      return;
+    }
 
-    // Read existing profiles from localStorage (or empty array if none)
+    // At least phone or email required
+    const cleanedPhone = cleanContact(form.phone);
+    const cleanedEmail = cleanContact(form.email);
+
+    if (!cleanedPhone && !cleanedEmail) {
+      setError("Please enter at least your phone number or email.");
+      return;
+    }
+
+    // Load existing profiles
     const existing: StudentProfile[] = JSON.parse(
       localStorage.getItem("students") || "[]",
     );
 
-    // Add the new profile and save back to localStorage
+    // Check for duplicate phone
+    if (cleanedPhone) {
+      const dupPhone = existing.find((s) => {
+        const sp = s.phone
+          ? cleanContact(s.phone)
+          : !s.email && s.contactInfo && !s.contactInfo.includes("@")
+            ? cleanContact(s.contactInfo)
+            : "";
+        return sp && sp === cleanedPhone;
+      });
+      if (dupPhone) {
+        setError("This phone number is already registered.");
+        return;
+      }
+    }
+
+    // Check for duplicate email
+    if (cleanedEmail) {
+      const dupEmail = existing.find((s) => {
+        const se = s.email
+          ? cleanContact(s.email)
+          : s.contactInfo?.includes("@")
+            ? cleanContact(s.contactInfo)
+            : "";
+        return se && se === cleanedEmail;
+      });
+      if (dupEmail) {
+        setError("This email is already registered.");
+        return;
+      }
+    }
+
+    // contactInfo for login compat: prefer phone, fallback email
+    const contactInfo = cleanedPhone || cleanedEmail;
+
+    const newProfile: StudentProfile = {
+      id: Date.now().toString(),
+      name: form.name,
+      age: form.age,
+      role: form.role,
+      ...(form.branch ? { branch: form.branch } : {}),
+      skills: form.skills,
+      projectIdea: form.projectIdea,
+      college: form.college.trim(),
+      ...(cleanedPhone ? { phone: cleanedPhone } : {}),
+      ...(cleanedEmail ? { email: cleanedEmail } : {}),
+      contactInfo, // keep for login compat
+    };
+
     const updated = [...existing, newProfile];
     localStorage.setItem("students", JSON.stringify(updated));
 
-    // Go to Browse page so the user can see their new profile
-    onNavigate("browse");
+    // Auto-login: set currentUser and navigate to browse
+    onLogin(contactInfo || form.name.trim());
   };
+
+  // --- Blocked state: user already has a profile ---
+  if (currentUser) {
+    return (
+      <section className="py-16 px-6 bg-background">
+        <div className="max-w-lg mx-auto text-center">
+          <div
+            className="bg-white rounded-2xl border shadow-lg p-10"
+            style={{ borderColor: "#E5E7EB" }}
+            data-ocid="profile.blocked.card"
+          >
+            <div className="text-4xl mb-4">🙅</div>
+            <h2
+              className="text-2xl font-bold mb-2"
+              style={{ color: "#1F2937" }}
+            >
+              You already have a profile!
+            </h2>
+            <p className="text-sm mb-6" style={{ color: "#6B7280" }}>
+              Each account can only have one profile on TeamUp.
+            </p>
+            <button
+              data-ocid="profile.browse.button"
+              type="button"
+              onClick={() => onNavigate("browse")}
+              className="px-6 py-3 rounded-lg text-sm font-semibold text-white transition-transform hover:opacity-90 active:scale-95"
+              style={{ background: "#2563EB" }}
+            >
+              Browse Students
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-16 px-6 bg-background">
       <div className="max-w-lg mx-auto">
-        {/* Page heading */}
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-foreground mb-2">
             Create Your Profile
@@ -95,7 +217,6 @@ export default function CreateProfilePage({
           </p>
         </div>
 
-        {/* Form card */}
         <div className="bg-card rounded-xl border border-border shadow-card p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Name */}
@@ -138,7 +259,7 @@ export default function CreateProfilePage({
               />
             </div>
 
-            {/* Role dropdown */}
+            {/* Role */}
             <div className="space-y-1.5">
               <Label className="text-sm font-medium text-foreground">
                 Role <span className="text-destructive">*</span>
@@ -158,6 +279,34 @@ export default function CreateProfilePage({
                   <SelectItem value="Designer">Designer</SelectItem>
                   <SelectItem value="Editor">Editor</SelectItem>
                   <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Branch / Domain (optional) */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-foreground">
+                Branch / Domain
+                <span className="ml-1.5 text-xs text-muted-foreground font-normal">
+                  (optional)
+                </span>
+              </Label>
+              <Select
+                value={form.branch}
+                onValueChange={(value) => handleChange("branch", value)}
+              >
+                <SelectTrigger
+                  data-ocid="profile.branch.select"
+                  className="rounded-lg w-full"
+                >
+                  <SelectValue placeholder="Select your branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BRANCH_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -203,26 +352,73 @@ export default function CreateProfilePage({
               />
             </div>
 
-            {/* Contact Info */}
+            {/* College / University (required) */}
             <div className="space-y-1.5">
               <Label
-                htmlFor="contactInfo"
+                htmlFor="college"
                 className="text-sm font-medium text-foreground"
               >
-                Contact Info
+                College / University <span className="text-destructive">*</span>
               </Label>
               <Input
-                data-ocid="profile.contactInfo.input"
-                id="contactInfo"
+                data-ocid="profile.college.input"
+                id="college"
                 type="text"
-                placeholder="e.g. alex@email.com or +1 555 0123"
-                value={form.contactInfo}
-                onChange={(e) => handleChange("contactInfo", e.target.value)}
+                placeholder="e.g. Mumbai University"
+                value={form.college}
+                onChange={(e) => handleChange("college", e.target.value)}
                 className="rounded-lg"
               />
             </div>
 
-            {/* Validation error message */}
+            {/* Phone Number (optional) */}
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="phone"
+                className="text-sm font-medium text-foreground"
+              >
+                Phone Number
+                <span className="ml-1.5 text-xs text-muted-foreground font-normal">
+                  (optional)
+                </span>
+              </Label>
+              <Input
+                data-ocid="profile.phone.input"
+                id="phone"
+                type="tel"
+                placeholder="e.g. +91 98765 43210"
+                value={form.phone}
+                onChange={(e) => handleChange("phone", e.target.value)}
+                className="rounded-lg"
+              />
+            </div>
+
+            {/* Email Address (optional) */}
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="email"
+                className="text-sm font-medium text-foreground"
+              >
+                Email Address
+                <span className="ml-1.5 text-xs text-muted-foreground font-normal">
+                  (optional)
+                </span>
+              </Label>
+              <Input
+                data-ocid="profile.email.input"
+                id="email"
+                type="email"
+                placeholder="e.g. alex@email.com"
+                value={form.email}
+                onChange={(e) => handleChange("email", e.target.value)}
+                className="rounded-lg"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter at least your phone or email
+              </p>
+            </div>
+
+            {/* Error message */}
             {error && (
               <p
                 data-ocid="profile.form.error_state"
@@ -232,7 +428,6 @@ export default function CreateProfilePage({
               </p>
             )}
 
-            {/* Submit button */}
             <Button
               data-ocid="profile.form.submit_button"
               type="submit"
