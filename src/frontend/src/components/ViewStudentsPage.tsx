@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import type { Page } from "../App";
+import { db } from "../firebase";
 import type { StudentProfile } from "./CreateProfilePage";
 import StudentCard from "./StudentCard";
 
@@ -20,10 +22,30 @@ interface ViewStudentsPageProps {
 export default function ViewStudentsPage({
   onNavigate,
 }: ViewStudentsPageProps) {
-  // Load all student profiles from localStorage
-  const [students] = useState<StudentProfile[]>(() => {
-    return JSON.parse(localStorage.getItem("students") || "[]");
-  });
+  const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+
+  // Fetch all student profiles from Firestore on mount
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "users"));
+        const profiles: StudentProfile[] = snapshot.docs.map((doc) => ({
+          ...(doc.data() as Omit<StudentProfile, "id">),
+          id: doc.id,
+        }));
+        setStudents(profiles);
+      } catch (err) {
+        console.error("Failed to fetch students:", err);
+        setFetchError("Failed to load students. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStudents();
+  }, []);
 
   const [selectedRole, setSelectedRole] = useState<RoleFilter>("All Roles");
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,6 +87,44 @@ export default function ViewStudentsPage({
     setCollegeQuery("");
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <section className="py-16 px-6 bg-background">
+        <div className="max-w-5xl mx-auto text-center">
+          <div
+            data-ocid="students.loading_state"
+            className="py-24 flex flex-col items-center gap-4"
+          >
+            <div
+              className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"
+              role="status"
+              aria-label="Loading students"
+            />
+            <p className="text-sm text-muted-foreground">Loading students...</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Error state
+  if (fetchError) {
+    return (
+      <section className="py-16 px-6 bg-background">
+        <div className="max-w-5xl mx-auto text-center">
+          <div data-ocid="students.error_state" className="py-20">
+            <p className="text-4xl mb-4">⚠️</p>
+            <p className="text-lg font-semibold text-foreground mb-2">
+              Something went wrong
+            </p>
+            <p className="text-sm text-muted-foreground">{fetchError}</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="py-16 px-6 bg-background">
       <div className="max-w-5xl mx-auto">
@@ -74,7 +134,7 @@ export default function ViewStudentsPage({
           </h2>
         </div>
 
-        {/* Case 1: No profiles exist in localStorage at all */}
+        {/* Case 1: No profiles exist in Firestore at all */}
         {students.length === 0 ? (
           <div
             data-ocid="students.empty_state"

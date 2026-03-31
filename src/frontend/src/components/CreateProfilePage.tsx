@@ -11,11 +11,13 @@ import {
 /**
  * CreateProfilePage.tsx
  * The form where students fill in their details to create a profile.
- * On submit, the data is saved to localStorage.
+ * On submit, the data is saved to Firestore.
  * If the user is not logged in, they are auto-logged in after creation.
  */
+import { addDoc, collection, getDocs } from "firebase/firestore";
 import { useState } from "react";
 import type { Page } from "../App";
+import { db } from "../firebase";
 
 // The shape of a student profile
 export interface StudentProfile {
@@ -80,13 +82,14 @@ export default function CreateProfilePage({
   });
 
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setError("");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!form.name.trim() || !form.role || !form.skills.trim()) {
@@ -109,65 +112,79 @@ export default function CreateProfilePage({
       return;
     }
 
-    // Load existing profiles
-    const existing: StudentProfile[] = JSON.parse(
-      localStorage.getItem("students") || "[]",
-    );
+    setSubmitting(true);
+    setError("");
 
-    // Check for duplicate phone
-    if (cleanedPhone) {
-      const dupPhone = existing.find((s) => {
-        const sp = s.phone
-          ? cleanContact(s.phone)
-          : !s.email && s.contactInfo && !s.contactInfo.includes("@")
-            ? cleanContact(s.contactInfo)
-            : "";
-        return sp && sp === cleanedPhone;
-      });
-      if (dupPhone) {
-        setError("This phone number is already registered.");
-        return;
+    try {
+      // Load existing profiles from Firestore for duplicate check
+      const snapshot = await getDocs(collection(db, "users"));
+      const existing: StudentProfile[] = snapshot.docs.map((doc) => ({
+        ...(doc.data() as Omit<StudentProfile, "id">),
+        id: doc.id,
+      }));
+
+      // Check for duplicate phone
+      if (cleanedPhone) {
+        const dupPhone = existing.find((s) => {
+          const sp = s.phone
+            ? cleanContact(s.phone)
+            : !s.email && s.contactInfo && !s.contactInfo.includes("@")
+              ? cleanContact(s.contactInfo)
+              : "";
+          return sp && sp === cleanedPhone;
+        });
+        if (dupPhone) {
+          setError("This phone number is already registered.");
+          setSubmitting(false);
+          return;
+        }
       }
-    }
 
-    // Check for duplicate email
-    if (cleanedEmail) {
-      const dupEmail = existing.find((s) => {
-        const se = s.email
-          ? cleanContact(s.email)
-          : s.contactInfo?.includes("@")
-            ? cleanContact(s.contactInfo)
-            : "";
-        return se && se === cleanedEmail;
-      });
-      if (dupEmail) {
-        setError("This email is already registered.");
-        return;
+      // Check for duplicate email
+      if (cleanedEmail) {
+        const dupEmail = existing.find((s) => {
+          const se = s.email
+            ? cleanContact(s.email)
+            : s.contactInfo?.includes("@")
+              ? cleanContact(s.contactInfo)
+              : "";
+          return se && se === cleanedEmail;
+        });
+        if (dupEmail) {
+          setError("This email is already registered.");
+          setSubmitting(false);
+          return;
+        }
       }
+
+      // contactInfo for login compat: prefer phone, fallback email
+      const contactInfo = cleanedPhone || cleanedEmail;
+
+      // Build the profile object (no id -- Firestore auto-generates)
+      const newProfile: Omit<StudentProfile, "id"> = {
+        name: form.name,
+        age: form.age,
+        role: form.role,
+        ...(form.branch ? { branch: form.branch } : {}),
+        skills: form.skills,
+        projectIdea: form.projectIdea,
+        college: form.college.trim(),
+        ...(cleanedPhone ? { phone: cleanedPhone } : {}),
+        ...(cleanedEmail ? { email: cleanedEmail } : {}),
+        contactInfo, // keep for login compat
+      };
+
+      // Save to Firestore
+      await addDoc(collection(db, "users"), newProfile);
+
+      // Auto-login: set currentUser and navigate to browse
+      onLogin(contactInfo || form.name.trim());
+    } catch (err) {
+      console.error("Profile creation error:", err);
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
-
-    // contactInfo for login compat: prefer phone, fallback email
-    const contactInfo = cleanedPhone || cleanedEmail;
-
-    const newProfile: StudentProfile = {
-      id: Date.now().toString(),
-      name: form.name,
-      age: form.age,
-      role: form.role,
-      ...(form.branch ? { branch: form.branch } : {}),
-      skills: form.skills,
-      projectIdea: form.projectIdea,
-      college: form.college.trim(),
-      ...(cleanedPhone ? { phone: cleanedPhone } : {}),
-      ...(cleanedEmail ? { email: cleanedEmail } : {}),
-      contactInfo, // keep for login compat
-    };
-
-    const updated = [...existing, newProfile];
-    localStorage.setItem("students", JSON.stringify(updated));
-
-    // Auto-login: set currentUser and navigate to browse
-    onLogin(contactInfo || form.name.trim());
   };
 
   // --- Blocked state: user already has a profile ---
@@ -235,6 +252,7 @@ export default function CreateProfilePage({
                 value={form.name}
                 onChange={(e) => handleChange("name", e.target.value)}
                 className="rounded-lg"
+                disabled={submitting}
               />
             </div>
 
@@ -256,6 +274,7 @@ export default function CreateProfilePage({
                 value={form.age}
                 onChange={(e) => handleChange("age", e.target.value)}
                 className="rounded-lg"
+                disabled={submitting}
               />
             </div>
 
@@ -267,6 +286,7 @@ export default function CreateProfilePage({
               <Select
                 value={form.role}
                 onValueChange={(value) => handleChange("role", value)}
+                disabled={submitting}
               >
                 <SelectTrigger
                   data-ocid="profile.role.select"
@@ -294,6 +314,7 @@ export default function CreateProfilePage({
               <Select
                 value={form.branch}
                 onValueChange={(value) => handleChange("branch", value)}
+                disabled={submitting}
               >
                 <SelectTrigger
                   data-ocid="profile.branch.select"
@@ -327,6 +348,7 @@ export default function CreateProfilePage({
                 value={form.skills}
                 onChange={(e) => handleChange("skills", e.target.value)}
                 className="rounded-lg"
+                disabled={submitting}
               />
               <p className="text-xs text-muted-foreground">
                 Separate skills with commas
@@ -349,6 +371,7 @@ export default function CreateProfilePage({
                 value={form.projectIdea}
                 onChange={(e) => handleChange("projectIdea", e.target.value)}
                 className="rounded-lg"
+                disabled={submitting}
               />
             </div>
 
@@ -368,6 +391,7 @@ export default function CreateProfilePage({
                 value={form.college}
                 onChange={(e) => handleChange("college", e.target.value)}
                 className="rounded-lg"
+                disabled={submitting}
               />
             </div>
 
@@ -390,6 +414,7 @@ export default function CreateProfilePage({
                 value={form.phone}
                 onChange={(e) => handleChange("phone", e.target.value)}
                 className="rounded-lg"
+                disabled={submitting}
               />
             </div>
 
@@ -412,6 +437,7 @@ export default function CreateProfilePage({
                 value={form.email}
                 onChange={(e) => handleChange("email", e.target.value)}
                 className="rounded-lg"
+                disabled={submitting}
               />
               <p className="text-xs text-muted-foreground">
                 Enter at least your phone or email
@@ -433,8 +459,9 @@ export default function CreateProfilePage({
               type="submit"
               className="w-full rounded-lg font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
               size="lg"
+              disabled={submitting}
             >
-              Create Profile
+              {submitting ? "Creating..." : "Create Profile"}
             </Button>
           </form>
         </div>

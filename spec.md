@@ -1,45 +1,31 @@
-# TeamUp
+# TeamUp – Firebase Firestore Migration
 
 ## Current State
-- Single `contactInfo` field on StudentProfile (stores email or phone, cleaned)
-- StudentCard shows one green button: WhatsApp or Send Email based on contact type
-- No College/University field on profiles
-- Browse page filters by Role (dropdown) and Skill (search input)
-- Login uses `contactInfo` as identifier
-- Home page hero has problem hook, title, tagline, CTA buttons, social proof
+All student profiles are stored in `localStorage` under the key `"students"`. Login checks localStorage for matching contacts. `currentUser` (phone/email session token) is stored in localStorage. The app is single-device: profiles created on one device are not visible on others.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `phone` and `email` as separate optional fields on `StudentProfile` interface
-- `college` as a required string field on `StudentProfile`
-- Phone input field in Create Profile form (optional)
-- Email input field in Create Profile form (optional)
-- College / University input field in Create Profile form (required)
-- Validation: at least one of phone or email must be filled before submitting
-- 3 action buttons on each StudentCard: Call (blue, tel:), WhatsApp (green, wa.me), Email (neutral, mailto:)
-- Each button disabled/hidden if that data is missing for that profile
-- Mobile: buttons stack vertically; desktop: row layout
-- College filter dropdown on Browse page (alongside existing Role filter and Skill search)
-- Tagline line on Home page hero: "Find teammates in your college in 30 seconds." — slightly bold, positioned between the main "TeamUp" title and the existing tagline/description
+- `firebase` npm package to `src/frontend/package.json`
+- `src/frontend/src/firebase.ts` — initializes Firebase app and exports Firestore `db` instance
+- Loading state in `ViewStudentsPage` while fetching profiles from Firestore
+- Async loading/saving states in `CreateProfilePage` while checking duplicates and writing to Firestore
 
 ### Modify
-- `StudentProfile` interface: add `phone?: string`, `email?: string`, `college: string`; keep `contactInfo?: string` for backward compat
-- Create Profile form: replace single `contactInfo` field with separate Phone, Email, and College fields
-- StudentCard contact footer: replace single green button with 3-button layout
-- Login logic: must still work — `currentUser` in localStorage is set to cleaned contact; for existing profiles the old `contactInfo` field still works
-- Profile creation duplicate detection: check against phone and email individually (not just contactInfo)
-- ViewStudentsPage: add College filter dropdown; "No students found" empty state message already exists
-- Backward compat for old profiles: if `phone`/`email` missing but `contactInfo` exists, derive them (contains "@" → treat as email, otherwise treat as phone)
+- `CreateProfilePage.tsx` — replace `localStorage.getItem/setItem('students')` with async Firestore reads/writes (`addDoc` to `users` collection); show loading indicator on submit
+- `LoginPage.tsx` — replace `localStorage.getItem('students')` with async Firestore query (`getDocs` on `users` collection) to find matching contact
+- `ViewStudentsPage.tsx` — replace `localStorage.getItem('students')` with `getDocs` from Firestore `users` collection; add loading spinner and error state
+- `src/frontend/package.json` — add `firebase` dependency
 
 ### Remove
-- Single `contactInfo` input field from Create Profile form (replaced by separate phone + email fields)
-- Old single-button contact system on StudentCard (replaced by 3 buttons)
+- All `localStorage.getItem('students')` and `localStorage.setItem('students', ...)` calls
+- No migration of existing localStorage data (fresh start with Firestore)
 
 ## Implementation Plan
-1. Update `StudentProfile` interface in `CreateProfilePage.tsx`: add `phone?`, `email?`, `college` fields; keep `contactInfo?` for backward compat
-2. Update Create Profile form: remove `contactInfo` field, add Phone (optional), Email (optional), College (required) fields with validation (at least one of phone/email required)
-3. Update profile save logic: store `phone`, `email`, `college` on new profiles; set `contactInfo` to phone or email for login compat
-4. Update `StudentCard.tsx`: replace single button with 3 buttons (Call, WhatsApp, Email) — derive phone/email from new fields or fall back to `contactInfo`
-5. Update `ViewStudentsPage.tsx`: add College filter dropdown, wire into combined filter logic
-6. Update `HomePage.tsx`: add "Find teammates in your college in 30 seconds." line between title and tagline
+1. Add `firebase` to `package.json` dependencies
+2. Create `firebase.ts` with the provided config; export `db` (Firestore instance)
+3. Update `ViewStudentsPage`: on mount, fetch all docs from `users` collection; show spinner during load, render cards after
+4. Update `LoginPage`: on login click, query Firestore `users` collection for matching phone/email/contactInfo; async with loading state
+5. Update `CreateProfilePage`: on submit, async query Firestore for duplicate phone/email, then `addDoc` to `users` collection; show loading during async ops
+6. Keep `localStorage.getItem/setItem/removeItem('currentUser')` untouched in `App.tsx`, `LoginPage`, `CreateProfilePage` — session only
+7. Run install, typecheck, lint, build

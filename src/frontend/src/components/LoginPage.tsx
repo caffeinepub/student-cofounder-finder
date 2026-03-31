@@ -1,10 +1,12 @@
 /**
  * LoginPage.tsx
  * Simple login screen where users enter their email or phone to log in.
- * Checks against saved profiles in localStorage.
+ * Checks against saved profiles in Firestore.
  */
+import { collection, getDocs } from "firebase/firestore";
 import { useState } from "react";
 import type { Page } from "../App";
+import { db } from "../firebase";
 import type { StudentProfile } from "./CreateProfilePage";
 
 interface LoginPageProps {
@@ -20,37 +22,50 @@ function cleanContact(value: string): string {
 export default function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
   const [contact, setContact] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const cleaned = cleanContact(contact);
     if (!cleaned) {
       setError("Please enter your email or phone.");
       return;
     }
 
-    // Load all saved profiles from localStorage
-    const students: StudentProfile[] = JSON.parse(
-      localStorage.getItem("students") || "[]",
-    );
+    setLoading(true);
+    setError("");
 
-    // Check if any profile matches after cleaning:
-    // Try contactInfo (old profiles), phone, and email fields
-    const match = students.find((s) => {
-      const byContactInfo = s.contactInfo
-        ? cleanContact(s.contactInfo) === cleaned
-        : false;
-      const byPhone = s.phone ? cleanContact(s.phone) === cleaned : false;
-      const byEmail = s.email ? cleanContact(s.email) === cleaned : false;
-      return byContactInfo || byPhone || byEmail;
-    });
+    try {
+      // Query all profiles from Firestore
+      const snapshot = await getDocs(collection(db, "users"));
+      const students: StudentProfile[] = snapshot.docs.map((doc) => ({
+        ...(doc.data() as Omit<StudentProfile, "id">),
+        id: doc.id,
+      }));
 
-    if (match) {
-      // Found! Log the user in using whichever contact matched
-      const loginKey =
-        match.contactInfo || match.phone || match.email || cleaned;
-      onLogin(cleanContact(loginKey));
-    } else {
-      setError("No profile found. Please create your profile first.");
+      // Check if any profile matches after cleaning:
+      // Try contactInfo (old profiles), phone, and email fields
+      const match = students.find((s) => {
+        const byContactInfo = s.contactInfo
+          ? cleanContact(s.contactInfo) === cleaned
+          : false;
+        const byPhone = s.phone ? cleanContact(s.phone) === cleaned : false;
+        const byEmail = s.email ? cleanContact(s.email) === cleaned : false;
+        return byContactInfo || byPhone || byEmail;
+      });
+
+      if (match) {
+        // Found! Log the user in using whichever contact matched
+        const loginKey =
+          match.contactInfo || match.phone || match.email || cleaned;
+        onLogin(cleanContact(loginKey));
+      } else {
+        setError("No profile found. Please create your profile first.");
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -100,7 +115,8 @@ export default function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
               setError(""); // Clear error on type
             }}
             onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-            className="w-full border rounded-lg px-4 py-3 text-sm outline-none transition-all"
+            disabled={loading}
+            className="w-full border rounded-lg px-4 py-3 text-sm outline-none transition-all disabled:opacity-60"
             style={{
               borderColor: error ? "#EF4444" : "#D1D5DB",
               color: "#1F2937",
@@ -123,10 +139,11 @@ export default function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
             data-ocid="login.primary_button"
             type="button"
             onClick={handleLogin}
-            className="w-full rounded-lg py-3 text-sm font-semibold text-white transition-transform active:scale-95 hover:opacity-90"
+            disabled={loading}
+            className="w-full rounded-lg py-3 text-sm font-semibold text-white transition-transform active:scale-95 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
             style={{ background: "#2563EB" }}
           >
-            Login
+            {loading ? "Logging in..." : "Login"}
           </button>
         </div>
 
