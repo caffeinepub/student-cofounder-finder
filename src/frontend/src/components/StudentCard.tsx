@@ -2,6 +2,7 @@
  * StudentCard.tsx
  * Displays one student's profile as a card.
  * Shows 3 contact action buttons: Call, WhatsApp, Email.
+ * Also shows projectDescription if available.
  */
 import type { StudentProfile } from "./CreateProfilePage";
 
@@ -106,6 +107,18 @@ export default function StudentCard({ student, index }: StudentCardProps) {
               Project Idea
             </p>
             <p className="text-sm text-foreground">{student.projectIdea}</p>
+          </div>
+        )}
+
+        {/* Project Description (optional, shown only if available) */}
+        {student.projectDescription && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
+              Project Description
+            </p>
+            <p className="text-sm text-foreground">
+              {student.projectDescription}
+            </p>
           </div>
         )}
       </div>

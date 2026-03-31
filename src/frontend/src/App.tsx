@@ -13,7 +13,7 @@ import SplashScreen from "./components/SplashScreen";
 import ViewStudentsPage from "./components/ViewStudentsPage";
 
 // Pages our app can show
-export type Page = "home" | "create" | "browse" | "login";
+export type Page = "home" | "create" | "browse" | "login" | "edit";
 
 /**
  * Decide whether to show the splash screen:
@@ -94,6 +94,14 @@ export default function App() {
         {currentPage === "home" && <HomePage onNavigate={setCurrentPage} />}
         {currentPage === "create" && (
           <CreateProfilePage
+            onNavigate={setCurrentPage}
+            onLogin={handleProfileCreated}
+          />
+        )}
+        {currentPage === "edit" && (
+          <CreateProfilePage
+            editMode={true}
+            currentUser={currentUser}
             onNavigate={setCurrentPage}
             onLogin={handleProfileCreated}
           />

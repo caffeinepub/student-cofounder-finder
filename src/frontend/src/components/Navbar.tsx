@@ -1,7 +1,7 @@
 /**
  * Navbar.tsx
  * The top navigation bar shown on every page.
- * When logged in: shows logo + Home + Browse + Logout button.
+ * When logged in: shows logo + Home + Browse + Edit Profile + Logout button.
  * When not logged in: shows only the logo.
  */
 import type { Page } from "../App";
@@ -43,9 +43,9 @@ export default function Navbar({
           👥 TeamUp
         </button>
 
-        {/* Right side: nav links + logout (only when logged in) */}
+        {/* Right side: nav links + action buttons (only when logged in) */}
         {currentUser && (
-          <nav className="flex items-center gap-6">
+          <nav className="flex items-center gap-4">
             <button
               type="button"
               data-ocid="nav.home.link"
@@ -63,6 +63,20 @@ export default function Navbar({
               style={linkStyle("browse")}
             >
               Browse Students
+            </button>
+
+            {/* Edit Profile button -- purple style */}
+            <button
+              type="button"
+              data-ocid="nav.edit_profile.button"
+              onClick={() => onNavigate("edit")}
+              className="text-sm font-semibold px-4 py-1.5 rounded-lg transition-all hover:opacity-90 active:scale-95"
+              style={{
+                color: "#FFFFFF",
+                background: "#7C3AED",
+              }}
+            >
+              Edit Profile
             </button>
 
             {/* Logout button -- clean, subtle red style */}
