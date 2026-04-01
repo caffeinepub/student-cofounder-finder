@@ -26,6 +26,9 @@ export default function ViewStudentsPage({
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
 
+  // Get the currently logged-in user from localStorage (session token only)
+  const currentUser = localStorage.getItem("currentUser");
+
   // Fetch all student profiles from Firestore on mount
   useEffect(() => {
     const fetchStudents = async () => {
@@ -61,12 +64,10 @@ export default function ViewStudentsPage({
   const filteredStudents = students.filter((s) => {
     const matchesRole = selectedRole === "All Roles" || s.role === selectedRole;
 
-    // Skill search: partial case-insensitive match
     const matchesSearch =
       searchQuery.trim() === "" ||
       s.skills.toLowerCase().includes(searchQuery.trim().toLowerCase());
 
-    // College filter: match against s.college; if no college field, only pass when filter is empty
     const matchesCollege =
       collegeQuery.trim() === "" ||
       (s.college
@@ -76,18 +77,15 @@ export default function ViewStudentsPage({
     return matchesRole && matchesSearch && matchesCollege;
   });
 
-  // Count label: "X Students Available" when no filter, "X Students Found" when filter active
   const displayCount = filteredStudents.length;
   const countLabel = isFilterActive ? "Students Found" : "Students Available";
 
-  // Reset all filters
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedRole("All Roles");
     setCollegeQuery("");
   };
 
-  // Loading state
   if (loading) {
     return (
       <section className="py-16 px-6 bg-background">
@@ -108,7 +106,6 @@ export default function ViewStudentsPage({
     );
   }
 
-  // Error state
   if (fetchError) {
     return (
       <section className="py-16 px-6 bg-background">
@@ -156,9 +153,7 @@ export default function ViewStudentsPage({
           <>
             {/* Search + Filter row */}
             <div className="flex flex-col gap-3 mb-4">
-              {/* Row 1: skill search + role dropdown + college input (+ clear on desktop) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                {/* Search by skill */}
                 <input
                   type="text"
                   data-ocid="students.search_input"
@@ -167,8 +162,6 @@ export default function ViewStudentsPage({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="flex-1 rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                 />
-
-                {/* Role filter dropdown */}
                 <select
                   id="role-filter"
                   data-ocid="students.filter.select"
@@ -184,8 +177,6 @@ export default function ViewStudentsPage({
                     </option>
                   ))}
                 </select>
-
-                {/* College filter input */}
                 <input
                   type="text"
                   data-ocid="students.college.search_input"
@@ -194,8 +185,6 @@ export default function ViewStudentsPage({
                   onChange={(e) => setCollegeQuery(e.target.value)}
                   className="w-full sm:w-48 rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                 />
-
-                {/* Clear Filters button: inline on sm+ when filter is active */}
                 {isFilterActive && (
                   <button
                     type="button"
@@ -207,8 +196,6 @@ export default function ViewStudentsPage({
                   </button>
                 )}
               </div>
-
-              {/* Row 2: Clear Filters button stacked on mobile only */}
               {isFilterActive && (
                 <div className="sm:hidden">
                   <button
@@ -252,6 +239,7 @@ export default function ViewStudentsPage({
                     key={student.id}
                     student={student}
                     index={index + 1}
+                    currentUser={currentUser}
                   />
                 ))}
               </div>

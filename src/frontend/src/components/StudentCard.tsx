@@ -1,24 +1,33 @@
 /**
  * StudentCard.tsx
  * Displays one student's profile as a card.
- * Shows 3 contact action buttons: Call, WhatsApp, Email.
- * Also shows projectDescription if available.
+ * Contact buttons (Call, WhatsApp, Email) have been replaced with
+ * a single "Request Contact" button that creates a Firestore request.
  */
+import {
+  addDoc,
+  collection,
+  getDocs,
+  query,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
+import { useState } from "react";
+import { db } from "../firebase";
 import type { StudentProfile } from "./CreateProfilePage";
 
 interface StudentCardProps {
   student: StudentProfile;
   index: number;
+  /** The currently logged-in user's contact (from localStorage). */
+  currentUser: string | null;
 }
 
-// Build WhatsApp URL: strip non-digits, add country code 91 if number < 12 digits
-function buildWhatsAppUrl(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  const number = digits.length >= 12 ? digits : `91${digits}`;
-  return `https://wa.me/${number}`;
-}
-
-export default function StudentCard({ student, index }: StudentCardProps) {
+export default function StudentCard({
+  student,
+  index,
+  currentUser,
+}: StudentCardProps) {
   const skillList = student.skills
     .split(",")
     .map((s) => s.trim())
@@ -33,19 +42,69 @@ export default function StudentCard({ student, index }: StudentCardProps) {
   const roleColor =
     roleBadgeColor[student.role] ?? "bg-muted text-muted-foreground";
 
-  // Derive phone and email from new fields or fall back to old contactInfo
-  // Old profiles may have only contactInfo; detect by checking for "@"
-  const phone =
+  // Determine the identifier for this student card (phone or email)
+  const studentContact =
     student.phone ||
-    (!student.email && student.contactInfo && !student.contactInfo.includes("@")
-      ? student.contactInfo
-      : undefined);
-  const email =
     student.email ||
-    (student.contactInfo?.includes("@") ? student.contactInfo : undefined);
+    (student.contactInfo?.includes("@")
+      ? student.contactInfo
+      : student.contactInfo);
 
-  // Shared disabled style for unavailable buttons
-  const disabledStyle = "pointer-events-none opacity-40 cursor-not-allowed";
+  // -- Request Contact state --
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [requested, setRequested] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  // Hide the button on the current user's own card
+  const isOwnCard =
+    currentUser &&
+    studentContact &&
+    currentUser.toLowerCase().trim() === studentContact.toLowerCase().trim();
+
+  /** Opens the confirmation popup. Only works when logged in. */
+  function handleRequestClick() {
+    if (!currentUser) {
+      alert("Please log in to send a connection request.");
+      return;
+    }
+    setShowConfirm(true);
+  }
+
+  /** Confirmed: save request to Firestore and update button state. */
+  async function handleConfirm() {
+    if (!currentUser || !studentContact) return;
+    setSending(true);
+    try {
+      // Prevent duplicate requests between the same pair of users
+      const existing = await getDocs(
+        query(
+          collection(db, "requests"),
+          where("fromUser", "==", currentUser),
+          where("toUser", "==", studentContact),
+        ),
+      );
+      if (!existing.empty) {
+        // Already sent — just update the UI
+        setRequested(true);
+        setShowConfirm(false);
+        return;
+      }
+
+      await addDoc(collection(db, "requests"), {
+        fromUser: currentUser,
+        toUser: studentContact,
+        status: "pending",
+        timestamp: serverTimestamp(),
+      });
+      setRequested(true);
+    } catch (err) {
+      console.error("Failed to send request:", err);
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setSending(false);
+      setShowConfirm(false);
+    }
+  }
 
   return (
     <div
@@ -64,7 +123,6 @@ export default function StudentCard({ student, index }: StudentCardProps) {
                 Age {student.age}
               </span>
             )}
-            {/* College name shown below age */}
             {student.college && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 🎓 {student.college}
@@ -110,7 +168,7 @@ export default function StudentCard({ student, index }: StudentCardProps) {
           </div>
         )}
 
-        {/* Project Description (optional, shown only if available) */}
+        {/* Project Description (optional) */}
         {student.projectDescription && (
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
@@ -123,70 +181,71 @@ export default function StudentCard({ student, index }: StudentCardProps) {
         )}
       </div>
 
-      {/* Card footer: 3 contact action buttons */}
-      <div className="px-6 pb-6">
-        {/* Mobile: stacked vertically; sm+: horizontal row */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          {/* ── Call button (blue) ── */}
-          {phone ? (
-            <a
-              data-ocid={`students.item.${index}.button`}
-              href={`tel:${phone}`}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-semibold text-white text-center transition-opacity hover:opacity-90"
-              style={{ backgroundColor: "#2563EB" }}
-            >
-              📞 Call
-            </a>
-          ) : (
-            <span
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-semibold text-white text-center ${disabledStyle}`}
-              style={{ backgroundColor: "#6B7280" }}
-            >
-              📞 Call
-            </span>
-          )}
-
-          {/* ── WhatsApp button (green) ── */}
-          {phone ? (
-            <a
-              data-ocid={`students.item.${index}.button`}
-              href={buildWhatsAppUrl(phone)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-semibold text-white text-center transition-opacity hover:opacity-90"
+      {/* Card footer: Request Contact button */}
+      {!isOwnCard && (
+        <div className="px-6 pb-6">
+          {requested ? (
+            /* After request sent: disabled confirmation state */
+            <button
+              type="button"
+              disabled
+              className="w-full py-2.5 rounded-lg text-sm font-semibold text-white text-center opacity-60 cursor-not-allowed"
               style={{ backgroundColor: "#22C55E" }}
             >
-              💬 WhatsApp
-            </a>
+              ✅ Request Sent
+            </button>
           ) : (
-            <span
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-semibold text-white text-center ${disabledStyle}`}
-              style={{ backgroundColor: "#6B7280" }}
-            >
-              💬 WhatsApp
-            </span>
-          )}
-
-          {/* ── Email button (neutral outline) ── */}
-          {email ? (
-            <a
+            <button
               data-ocid={`students.item.${index}.button`}
-              href={`mailto:${email}`}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-semibold text-center border border-border transition-colors hover:bg-muted"
-              style={{ color: "#1F2937" }}
+              type="button"
+              onClick={handleRequestClick}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold text-white text-center transition-opacity hover:opacity-90 active:scale-95"
+              style={{ backgroundColor: "#2563EB" }}
             >
-              ✉️ Email
-            </a>
-          ) : (
-            <span
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-semibold text-center border border-border ${disabledStyle}`}
-              style={{ color: "#1F2937" }}
-            >
-              ✉️ Email
-            </span>
+              🤝 Request Contact
+            </button>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Confirmation popup -- uses <dialog> for proper accessibility */}
+      {showConfirm && (
+        <dialog
+          open
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 border-0 p-0 max-w-none w-full h-full"
+          onClose={() => !sending && setShowConfirm(false)}
+        >
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full">
+            <h3 className="text-base font-bold text-gray-900 mb-2">
+              Send Connection Request
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Send a request to connect. Contact will be shared only if
+              accepted.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                disabled={sending}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={sending}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                style={{ backgroundColor: "#2563EB" }}
+              >
+                {sending ? "Sending..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
     </div>
   );
 }
